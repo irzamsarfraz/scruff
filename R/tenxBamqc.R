@@ -131,6 +131,8 @@ tenxBamqc <- function(bam,
         # Initialize iterator
         .bamIter <- .bamIterator(bamfl, param)
 
+        data.table::setkey(vcb, cell_barcode)
+        
         if (isWindows) {
             qcL <- BiocParallel::bpiterate(
                 ITER = .bamIter,
@@ -206,8 +208,9 @@ tenxBamqc <- function(bam,
 
 
 .tenxBamqcUnit <- function(bamGA, vcb, ...) {
-
-    bamdt <- data.table::data.table(readname = base::names(bamGA),
+    
+    bamdt <- data.table::data.table(
+        readname = base::names(bamGA),
         chr = as.vector(GenomicAlignments::seqnames(bamGA)),
         strand = S4Vectors::decode(BiocGenerics::strand(bamGA)),
         readstart = BiocGenerics::start(bamGA),
@@ -215,42 +218,51 @@ tenxBamqc <- function(bam,
         NH = S4Vectors::mcols(bamGA)$NH,
         GX = S4Vectors::mcols(bamGA)$GX,
         CB = S4Vectors::mcols(bamGA)$CB,
-        MM = S4Vectors::mcols(bamGA)$MM)
-
-    bamdt[, CB := data.table::tstrsplit(CB, "-")[[1]]]
-
+        MM = S4Vectors::mcols(bamGA)$MM
+    )
+    
+    
+    bamdt[, CB := data.table::tstrsplit(CB, "-", fixed = TRUE)[[1]]]
+    
     genomeReadsDt <- bamdt[, .(readname, CB)]
-
+    
     # number of aligned reads, including multimappers
     genomeReads <- base::table(genomeReadsDt[, CB])
-
+    
     # gene reads (uniquely mapped reads)
     # use reads (MM = 1 | MAPQ = 255)
-    geneReadsDt <- bamdt[(NH == 1 & !is.na(GX) | MM == 1) & !is.na(CB),
-        .(readname, CB, GX)]
-
+    geneReadsDt <-
+        bamdt[(NH == 1 & !is.na(GX) | MM == 1) & !is.na(CB),
+              .(readname, CB, GX)]
+    
     # if ";" is in GX then this read is not uniquely mapped
-    geneReadsDt <- geneReadsDt[!base::grepl(";", GX), ]
-
+    geneReadsDt <- geneReadsDt[!base::grepl(";", GX),]
+    
     geneReads <- base::table(geneReadsDt[, CB])
-
+    
     qcdt <- data.table::copy(vcb)
-
+    
     # sanity check
-    if (nrow(qcdt[cell_barcode %in% genomeReadsDt[, CB], ]) !=
-            length(unique(genomeReadsDt[!is.na(CB), CB]))) {
-        stop("Some of the corrected cell barcodes in the BAM file do not exist",
+    
+    if (length(unique(qcdt[.(genomeReadsDt[, CB]), nomatch = 0L]$cell_barcode)) !=
+        length(unique(genomeReadsDt[!is.na(CB), CB]))) {
+        stop(
+            "Some of the corrected cell barcodes in the BAM file do not exist",
             " in barcode whitelist. Maybe you are using an older version of ",
-            "cell barcode whitelist with 14-base-long barcodes?")
+            "cell barcode whitelist with 14-base-long barcodes?"
+        )
     }
-
-    qcdt[cell_barcode %in% genomeReadsDt[, CB],
-        reads_mapped_to_genome := as.numeric(genomeReads[cell_barcode])]
-
-    qcdt[cell_barcode %in% geneReadsDt[, CB],
-        reads_mapped_to_genes := as.numeric(geneReads[cell_barcode])]
-
+    
+    
+    qcdt[unique(qcdt[.(genomeReadsDt[, CB]), nomatch = 0L]$cell_barcode),
+         reads_mapped_to_genome := as.numeric(genomeReads[cell_barcode])]
+    
+    
+    qcdt[unique(qcdt[.(geneReadsDt[, CB]), nomatch = 0L]$cell_barcode),
+         reads_mapped_to_genes := as.numeric(geneReads[cell_barcode])]
+    
     resmatrix <- base::as.matrix(qcdt, rownames = 1)
     rownames(resmatrix) <- qcdt[, cell_barcode]
+    
     return(resmatrix)
 }
