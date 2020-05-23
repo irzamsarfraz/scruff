@@ -76,6 +76,8 @@ tenxBamqc <- function(bam,
 
     .checkCores(cores)
 
+    print("tenxBamqc called from irzamsarfraz/scruff")
+    
     isWindows <- .Platform$OS.type == "windows"
 
     print(match.call(expand.dots = TRUE))
