@@ -75,8 +75,6 @@ tenxBamqc <- function(bam,
     cores = max(1, parallel::detectCores() - 2)) {
 
     .checkCores(cores)
-
-    print("tenxBamqc called from irzamsarfraz/scruff")
     
     isWindows <- .Platform$OS.type == "windows"
 
